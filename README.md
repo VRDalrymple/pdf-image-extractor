@@ -36,7 +36,3 @@ Replace `input.pdf` with the PDF file you want to process and `output_directory`
 ## Notes
 
 This project is intended to make it easy to pull images out of PDF documents for reuse, inspection, or archival purposes.
-
-## License
-
-This project is provided as-is for personal and educational use.
