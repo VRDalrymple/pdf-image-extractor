@@ -2,10 +2,9 @@ import sys
 import os
 import re
 import fitz
-import json
-import tempfile
 from PySide6 import QtCore, QtWidgets
-from enum import Enum
+from PySide6.QtWidgets import QFileDialog
+
 
 class GUI(QtWidgets.QWidget):
     def __init__(self):
@@ -16,10 +15,10 @@ class GUI(QtWidgets.QWidget):
             alignment=QtCore.Qt.AlignCenter
         )
         self.filename = QtWidgets.QLabel("No files selected.", alignment=QtCore.Qt.AlignCenter)
-        
+
         self.file_button = QtWidgets.QPushButton("Select Files")
         self.file_button.clicked.connect(self.open_FileDialog)
-        
+
         self.scan_button = QtWidgets.QPushButton("Get Images!")
         self.scan_button.clicked.connect(self.grab_images)
 
@@ -43,60 +42,61 @@ class GUI(QtWidgets.QWidget):
         """Replace illegal filename characters and truncate safely."""
         safe = re.sub(r'[\\/*?:"<>|]', "_", name)
         return safe[:max_length]
-        
-    
+
     def open_FileDialog(self):
         """Opens file selection dialog for multiple pdfs."""
         file_paths, _ = QFileDialog.getOpenFileNames(self, "Select File(s)", "", "*.pdf")
         if file_paths:
             self.file_paths = file_paths
-            filenames = "\n".join(Path(fp).name for fp in file_paths)
-            self.filename.setText(f"Selected Files:\n{filenames}")
+            names = [os.path.basename(fp) for fp in file_paths]
+            self.filename.setText("Selected Files:\n" + "\n".join(names))
 
     def grab_images(self):
         try:
+            if not getattr(self, "file_paths", None):
+                self.text.setText("Please select files first.")
+                return
+
             save_dir = os.path.abspath("attached_images")
             os.makedirs(save_dir, exist_ok=True)
+            saved_any = False
 
-            for pdf in self.file_paths:
-                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmpfile:
-                    attachment.SaveAsFile(tmpfile.name)
-                    temp_pdf_path = tmpfile.name
-    
-                pdf = fitz.open(temp_pdf_path)
-                for page_index in range(len(pdf)):
-                    page = pdf.load_page(page_index)
+            for pdf_path in self.file_paths:
+                doc = fitz.open(pdf_path)
+                base_name = self.sanitize_filename(os.path.splitext(os.path.basename(pdf_path))[0])
+
+                for page_index in range(len(doc)):
+                    page = doc.load_page(page_index)
                     image_list = page.get_images(full=True)
-    
+
                     if image_list:
                         print(f"[+] Found {len(image_list)} images on page {page_index}")
                     else:
                         print(f"[!] No images found on page {page_index}")
-    
+
                     for image_index, img in enumerate(image_list, start=1):
                         xref = img[0]
-                        base_image = pdf.extract_image(xref)
+                        base_image = doc.extract_image(xref)
                         image_bytes = base_image["image"]
                         image_ext = base_image["ext"]
-    
+
                         image_name = os.path.join(
                             save_dir,
-                            f"{subject}_{page_index+1}_{image_index}.{image_ext}"
+                            f"{base_name}_{page_index + 1}_{image_index}.{image_ext}"
                         )
-                        image_name = self.uniquename(image_name)
+                        image_name = self.unique_name(image_name)
                         with open(image_name, "wb") as image_file:
                             image_file.write(image_bytes)
-    
+
                         print(f"[+] Extracted image saved as {image_name}")
                         saved_any = True
-    
-                pdf.close()
-                os.remove(temp_pdf_path)  # cleanup
+
+                doc.close()
 
             if saved_any:
                 self.text.setText("Images saved!")
             else:
-                self.text.setText("No image attachments found.")
+                self.text.setText("No images found in the selected PDFs.")
 
         except Exception as e:
             self.text.setText(f"Error: {str(e)}")
